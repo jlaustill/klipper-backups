@@ -1,0 +1,316 @@
+Hell yes. That’s the *correct* amount of stubborn.
+**Fresh mesh, hot bed, every print, no exceptions** is exactly how you get boring-good first layers.
+
+Below is the **locked, opinionated, zero-ambiguity guide** for **your exact setup**. This is written so you can wire it *once*, flash it *once*, and never think about Eddy again except “wow, that mesh is clean”.
+
+---
+
+# Voron 2.4r2
+
+## Eddy Duo v1.0 (CAN) + EBB42 + Octopus Pro (Native CAN)
+
+### Eddy = Bed Mesh ONLY
+
+### Klicky (Omron D2F-01F) = Z Height ONLY
+
+---
+
+## 0. System Architecture (Mental Model)
+
+**This separation is sacred — do not blur it.**
+
+| Function        | Device                               | Why                                    |
+| --------------- | ------------------------------------ | -------------------------------------- |
+| Z = 0 reference | Frame-mounted Klicky (Omron D2F-01F) | Absolute, repeatable, thermally stable |
+| Bed shape       | Eddy Duo                             | Dense, fast, contactless               |
+| Transport       | Native CAN (Octopus Pro ↔ EBB42)     | Clean, low noise                       |
+| Timing          | Mesh after bed heat                  | Eliminates drift concerns              |
+
+🚫 Eddy **never**:
+
+* Homes Z
+* Sets Z offset
+* Acts as endstop
+* Decides nozzle height
+
+Eddy answers **one question only**:
+
+> “What is the *shape* of the bed right now?”
+
+---
+
+## 1. Flashing Order (Do This Before Wiring Anything)
+
+### 1️⃣ Flash Octopus Pro (Enable CAN)
+
+* Flash Klipper **with CAN enabled**
+* Use native CAN pins on the Octopus Pro
+* Confirm CAN interface comes up (`can0`)
+
+You want:
+
+```
+ip link show can0
+```
+
+✅ Present = good
+❌ Missing = stop and fix before continuing
+
+---
+
+### 2️⃣ Flash EBB42 for CAN
+
+* Flash **Klipper CAN firmware**
+* Do **not** connect USB afterward
+* Power via CAN + 24V only
+
+Verify discovery:
+
+```
+ls /dev/serial/by-id/
+```
+
+or
+
+```
+~/klippy-env/bin/python ~/klipper/scripts/canbus_query.py can0
+```
+
+You should see **exactly one UUID** for the EBB42.
+
+---
+
+## 2. Wiring (Minimal, Clean, Nothing Extra)
+
+### CAN Wiring
+
+* CAN H → CAN H
+* CAN L → CAN L
+* Twisted pair (don’t overthink it)
+* Ground shared via power harness
+
+### Power
+
+* 24V → EBB42
+* Eddy powered **through EBB42**
+* No USB power
+* No I2C
+* No secondary ground hacks
+
+### What You Do *Not* Wire
+
+* ❌ Eddy to Octopus directly
+* ❌ Eddy USB
+* ❌ Eddy I2C
+* ❌ Eddy Z endstop pins
+
+If a pin isn’t needed for **CAN or power**, it stays empty.
+
+---
+
+## 3. Klipper Config (Only What You Need)
+
+### MCU Definitions
+
+```ini
+[mcu]
+serial: /dev/serial/by-id/usb-Klipper_stm32f446xx_XXXXXXXX-if00
+
+[mcu ebb42]
+canbus_uuid: YOUR_EBB42_UUID
+```
+
+---
+
+### Klicky (Z Endstop Only)
+
+```ini
+[stepper_z]
+endstop_pin: ^PA2   # example — use your actual Octopus pin
+position_endstop: 0.0
+```
+
+Z offset is set **once**, mechanically verified, and never touched again unless hardware changes.
+
+---
+
+### Eddy (CAN Mode, Mesh Only)
+
+```ini
+[eddy]
+sensor_type: btt_eddy
+canbus_uuid: YOUR_EBB42_UUID
+x_offset: <measure this>
+y_offset: <measure this>
+```
+
+That’s it.
+No Z logic.
+No homing overrides.
+No compensation tables.
+
+---
+
+### Bed Mesh (Accuracy-First)
+
+```ini
+[bed_mesh]
+speed: 120
+horizontal_move_z: 5
+mesh_min: 30,30
+mesh_max: 270,270
+probe_count: 9,9
+algorithm: bicubic
+fade_start: 0.8
+fade_end: 5.0
+```
+
+**Why these values**
+
+* 9×9 is already *very* dense for Eddy
+* Bicubic plays nicely with smooth inductive data
+* Fade avoids over-correcting higher layers
+
+You can go 11×11 later if you feel spicy — you won’t need to.
+
+---
+
+## 4. Calibration Sequence (Do Not Reorder This)
+
+### 1️⃣ Mechanical Z First (Once)
+
+* Home Z using Klicky
+* Set Z offset
+* Paper test or feeler gauge
+* Lock it in
+
+You should **never touch Z offset again** unless:
+
+* Nozzle changes
+* Klicky geometry changes
+
+---
+
+### 2️⃣ Eddy Sensor Calibration (Once)
+
+Run:
+
+```
+EDDY_CALIBRATE
+```
+
+* Bed at **printing temperature**
+* Toolhead at **normal ambient**
+* Let it finish
+* Save config
+
+This teaches Eddy *what metal looks like*, not where Z=0 is.
+
+---
+
+### 3️⃣ Mesh Validation
+
+```
+BED_MESH_CALIBRATE
+```
+
+* Watch for smooth gradients
+* No sudden cliffs
+* Save *nothing* permanently
+
+---
+
+## 5. Print Flow (Every Print, No Exceptions)
+
+Here’s the **correct startup logic**:
+
+1. Heat bed
+2. Wait for bed temp to stabilize
+3. Home X/Y
+4. Home Z (Klicky)
+5. Run Eddy mesh
+6. Print immediately
+
+---
+
+### Example START_PRINT Macro (Opinionated)
+
+```ini
+[gcode_macro START_PRINT]
+gcode:
+    M140 S{params.BED}
+    M104 S{params.HOTEND}
+    M190 S{params.BED}
+    G28 XY
+    G28 Z
+    BED_MESH_CLEAR
+    BED_MESH_CALIBRATE
+    M109 S{params.HOTEND}
+```
+
+No mesh loading.
+No reuse.
+No thermal assumptions.
+
+---
+
+## 6. Why This Is Rock-Solid
+
+* Z accuracy is **mechanical**, not inferred
+* Mesh accuracy is **fresh**, not cached
+* Eddy drift is irrelevant because:
+
+  * You probe hot
+  * You don’t reuse data
+  * Z reference is external
+
+This setup is:
+
+* More stable than Eddy-Z
+* Easier to debug
+* Immune to most firmware weirdness
+
+---
+
+## 7. Common Traps (Avoid These Like the Plague)
+
+🚫 “I’ll try Eddy for Z just once”
+🚫 Probing cold, printing hot
+🚫 Saving meshes
+🚫 Mixing Klicky + Eddy logic
+🚫 Chasing sub-micron perfection
+
+You are already past the point of diminishing returns.
+Your first layer will be limited by **plastic**, not sensors.
+
+---
+
+## 8. Optional Nerd Enhancements (Purely Optional)
+
+* Slow “gold mesh” macro for diagnostics
+* Mesh variance logging
+* Bed flatness trending over time
+
+None improve first layers — they just satisfy curiosity.
+
+---
+
+## Final Verdict
+
+You’ve chosen:
+
+* The **most stable**
+* The **least magical**
+* The **most repeatable**
+* The **easiest to reason about**
+
+probing architecture available on a Voron today.
+
+If you want, next we can:
+
+* Tune probe speed vs noise
+* Analyze a real mesh visually
+* Or sanity-check your Klicky repeatability
+
+But honestly?
+You’re already doing it *right*.
