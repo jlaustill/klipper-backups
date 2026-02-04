@@ -11,11 +11,11 @@ This is a Klipper configuration backup repository for a **Voron 2.4r2** 3D print
 - **Controller**: Octopus Pro with native CAN bus
 - **Toolhead**: EBB42 (CAN-connected)
 - **Bed Probe**: BTT Eddy Duo v1.0 (CAN) - used for bed mesh ONLY
-- **Z Endstop**: Klicky with Omron D2F-01F - used for Z height ONLY
+- **Z Endstop**: Sexbolt with Hartk PCB - used for Z height ONLY
 
 ### Critical Design Principle
 
-Eddy handles bed mesh shape detection. Klicky handles Z=0 reference. These roles must never be mixed.
+Eddy handles bed mesh shape detection. Sexbolt handles Z=0 reference. These roles must never be mixed.
 
 ## File Types
 

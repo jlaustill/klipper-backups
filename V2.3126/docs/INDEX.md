@@ -25,6 +25,12 @@ The Klicky Probe project doesn't provide PDFs. Documentation is in `Klicky_Probe
 
 **Source:** [jlas1/Klicky-Probe](https://github.com/jlas1/Klicky-Probe)
 
+## Wiring Reference
+
+Custom wiring documentation created during reassembly:
+
+- `wiring.md` - LGX Lite pancake motor to EBB42 pin mapping, coil pairs, troubleshooting
+
 ## Online Resources
 
 These resources are not downloaded but may be useful:
